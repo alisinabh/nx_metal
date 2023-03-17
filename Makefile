@@ -9,7 +9,7 @@ endif
 
 all: priv/hello_metal_nif.so
 
-priv/hello_metal_nif.so: c_src/hello_metal_nif.m c_src/MTLBufferReference.m
+priv/hello_metal_nif.so: c_src/hello_metal_nif.m c_src/MTLBufferReference.m c_src/MTLDeviceReference.m
 	$(CC) $(CFLAGS) -x objective-c $(LDFLAGS) -framework Metal -framework Foundation -o $@ $^
 
 clean:

@@ -13,7 +13,7 @@ defmodule HelloMetalNif do
     raise "NIF init_metal/0 not loaded"
   end
 
-  def create_tensor(_tensor) do
+  def create_tensor(_dev, _tensor) do
     raise "NIF create_tensor/1 not loaded"
   end
 
