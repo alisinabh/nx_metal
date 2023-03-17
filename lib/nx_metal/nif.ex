@@ -4,7 +4,6 @@ defmodule NxMetal.NIF do
   def load_nif do
     path =
       :code.priv_dir(:nx_metal)
-      |> Path.join("priv")
       |> Path.join("nx_metal_nif")
 
     case :erlang.load_nif(to_charlist(path), 0) do
@@ -16,7 +15,19 @@ defmodule NxMetal.NIF do
     end
   end
 
-  def init_metal do
+  def hello do
+    :erlang.nif_error(:nif_not_loaded)
+  end
+
+  def init_metal_device do
+    :erlang.nif_error(:nif_not_loaded)
+  end
+
+  def create_tensor(_dev, _tensor) do
+    :erlang.nif_error(:nif_not_loaded)
+  end
+
+  def tensor_to_list(_tensor) do
     :erlang.nif_error(:nif_not_loaded)
   end
 end

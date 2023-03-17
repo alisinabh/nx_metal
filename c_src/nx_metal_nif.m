@@ -21,13 +21,7 @@ static ErlNifResourceType *buffer_resource_type;
 
 static void buffer_resource_dtor(ErlNifEnv *env, void *obj);
 
-static ERL_NIF_TERM hello(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
-{
-    NSString *hello_str = @"Hello, Metal!";
-    return enif_make_string(env, [hello_str UTF8String], ERL_NIF_LATIN1);
-}
-
-static ERL_NIF_TERM init_metal(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+static ERL_NIF_TERM init_metal_device(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     @autoreleasepool {
         id<MTLDevice> device = MTLCreateSystemDefaultDevice();
         if (!device) {
@@ -130,15 +124,14 @@ static ERL_NIF_TERM tensor_to_list(ErlNifEnv* env, int argc, const ERL_NIF_TERM 
 }
 
 static ErlNifFunc nif_funcs[] = {
-    {"hello", 0, hello, 0},
-    {"init_metal", 0, init_metal, 0},
+    {"init_metal_device", 0, init_metal_device, 0},
     {"create_tensor", 2, create_tensor, 0},
     {"tensor_to_list", 1, tensor_to_list, 0}
 };
 
 
 static int on_load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info) {
-    const char* mod = "Elixir.HelloMetalNif";
+    const char* mod = "Elixir.NxMetal.NIF";
     device_resource_type = enif_open_resource_type(env, mod, "Device", NULL, ERL_NIF_RT_CREATE, NULL);
     buffer_resource_type = enif_open_resource_type(env, mod, "MTLBufferResource", buffer_resource_dtor, ERL_NIF_RT_CREATE, NULL);
 
@@ -158,4 +151,4 @@ static void buffer_resource_dtor(ErlNifEnv *env, void *obj)
     buffer_res->buffer_ref = nil;
 }
 
-ERL_NIF_INIT(Elixir.HelloMetalNif, nif_funcs, on_load, NULL, NULL, NULL)
+ERL_NIF_INIT(Elixir.NxMetal.NIF, nif_funcs, on_load, NULL, NULL, NULL)
