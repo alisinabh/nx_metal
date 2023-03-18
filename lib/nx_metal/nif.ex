@@ -15,7 +15,7 @@ defmodule NxMetal.NIF do
     end
   end
 
-  def hello do
+  def metal_device_name do
     :erlang.nif_error(:nif_not_loaded)
   end
 
@@ -28,6 +28,18 @@ defmodule NxMetal.NIF do
   end
 
   def tensor_to_list(_tensor) do
+    :erlang.nif_error(:nif_not_loaded)
+  end
+
+  def from_binary(_) do
+    :erlang.nif_error(:nif_not_loaded)
+  end
+
+  def to_binary(_ref, _limit) do
+    :erlang.nif_error(:nif_not_loaded)
+  end
+
+  def eye(_, _, _, _, _) do
     :erlang.nif_error(:nif_not_loaded)
   end
 end
