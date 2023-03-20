@@ -21,8 +21,8 @@ defmodule NxMetal.Backend do
     IO.inspect(opts)
   end
 
-  def from_binary(tensor, binary, opts) do
-    {:ok, ref} = NIF.from_binary(binary)
+  def from_binary(%T{type: {_, bsize}, shape: shape} = tensor, binary, _opts) do
+    {:ok, ref} = NIF.from_binary(binary, bsize, shape)
     to_nx(ref, tensor)
   end
 
@@ -31,18 +31,16 @@ defmodule NxMetal.Backend do
     bin
   end
 
-  def eye(%{shape: shape, type: {t, bsize}} = out, _backend_options) do
-    shape_size = tuple_size(shape)
-    x = elem(shape, shape_size - 2)
-    y = elem(shape, shape_size - 1)
-
-    IO.inspect(shape)
-
-    total_elements = shape |> Tuple.to_list() |> Enum.product()
-
-    {:ok, ref} = NIF.eye(total_elements, x, y, t, bsize)
+  def eye(%T{shape: shape, type: {type, bsize}} = out, _backend_options) do
+    {:ok, ref} = NIF.eye(type, bsize, shape)
 
     to_nx(ref, out)
+  end
+
+  @impl true
+  def add(%T{data: %B{ref: a_ref}} = a, %T{data: %B{ref: b_ref}}, _backend_options) do
+    {:ok, ref} = NIF.add_tensors(a_ref, b_ref)
+    to_nx(ref, a)
   end
 
   @impl true

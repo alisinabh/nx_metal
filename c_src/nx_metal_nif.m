@@ -13,7 +13,10 @@ typedef struct {
 
 typedef struct {
     MTLBufferReference *buffer_ref;
-} MTLBufferResource;
+    unsigned int bitsize;
+    unsigned int *shape;
+    unsigned int elements_count;
+} MTLTensorResource;
 
 static ErlNifResourceType* device_resource_type;
 static ERL_NIF_TERM atom_ok;
@@ -96,7 +99,7 @@ static ERL_NIF_TERM create_tensor(ErlNifEnv* env, int argc, const ERL_NIF_TERM a
 
     if (buffer)
     {
-        MTLBufferResource *buffer_res = enif_alloc_resource(buffer_resource_type, sizeof(MTLBufferResource));
+        MTLTensorResource *buffer_res = enif_alloc_resource(buffer_resource_type, sizeof(MTLTensorResource));
         buffer_res->buffer_ref = [[MTLBufferReference alloc] initWithBuffer:buffer];
 
         ERL_NIF_TERM buffer_resource_term = enif_make_resource(env, buffer_res);
@@ -111,7 +114,7 @@ static ERL_NIF_TERM create_tensor(ErlNifEnv* env, int argc, const ERL_NIF_TERM a
 }
 
 static ERL_NIF_TERM tensor_to_list(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
-    MTLBufferResource *buffer_res;
+    MTLTensorResource *buffer_res;
     if (!enif_get_resource(env, argv[0], buffer_resource_type, (void **)&buffer_res)) {
         return enif_make_badarg(env);
     }
@@ -131,22 +134,48 @@ static ERL_NIF_TERM tensor_to_list(ErlNifEnv* env, int argc, const ERL_NIF_TERM 
 
 static ERL_NIF_TERM from_binary(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     ErlNifBinary binary;
-    if (!enif_inspect_binary(env, argv[0], &binary)) {
+    unsigned int bitsize;
+    unsigned int elements_count = 1;
+    int shape_dims;
+    const ERL_NIF_TERM* shape_tuple_elements;
+
+    if (!enif_inspect_binary(env, argv[0], &binary) ||
+        !enif_get_uint(env, argv[1], &bitsize) ||
+        !enif_get_tuple(env, argv[2], &shape_dims, &shape_tuple_elements)) {
         return enif_make_badarg(env);
     }
 
-    unsigned int num_elements = binary.size / sizeof(float);
-    float *data = (float *)binary.data;
+    unsigned int *shape = (unsigned int*)malloc(shape_dims * sizeof(unsigned int));
+    if (!shape) {
+        return enif_raise_exception(env, enif_make_string(env, "Memory allocation failed", ERL_NIF_LATIN1));
+    }
+
+    // Read the shape dimensions
+    for (int i = 0; i < shape_dims; i++) {
+        unsigned int uint_value;
+        if (!enif_get_uint(env, shape_tuple_elements[i], &uint_value)) {
+            free(shape);
+            return enif_make_badarg(env);
+        }
+
+        shape[i] = uint_value;
+        elements_count *= uint_value;
+    }
+
+    unsigned int num_elements = binary.size * 8 / bitsize;
 
     // Create a Metal buffer
-    id<MTLBuffer> buffer = [mtl_device newBufferWithBytes:data
-                                                length:num_elements * sizeof(float)
+    id<MTLBuffer> buffer = [mtl_device newBufferWithBytes:binary.data
+                                                length:num_elements * bitsize / 8
                                                options:MTLResourceStorageModeShared];
 
     // Create a resource reference and return it
     if (buffer) {
-        MTLBufferResource *buffer_res = enif_alloc_resource(buffer_resource_type, sizeof(MTLBufferResource));
+        MTLTensorResource *buffer_res = enif_alloc_resource(buffer_resource_type, sizeof(MTLTensorResource));
         buffer_res->buffer_ref = [[MTLBufferReference alloc] initWithBuffer:buffer];
+        buffer_res->bitsize = bitsize;
+        buffer_res->shape = shape;
+        buffer_res->elements_count = elements_count;
 
         ERL_NIF_TERM buffer_resource_term = enif_make_resource(env, buffer_res);
         enif_release_resource(buffer_res); // Release the resource, the term now holds the reference
@@ -158,7 +187,7 @@ static ERL_NIF_TERM from_binary(ErlNifEnv* env, int argc, const ERL_NIF_TERM arg
 }
 
 static ERL_NIF_TERM to_binary(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
-    MTLBufferResource *buffer_res;
+    MTLTensorResource *buffer_res;
     if (!enif_get_resource(env, argv[0], buffer_resource_type, (void **)&buffer_res)) {
         return enif_make_badarg(env);
     }
@@ -182,27 +211,48 @@ static ERL_NIF_TERM to_binary(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[
 }
 
 static ERL_NIF_TERM eye(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
-    unsigned int elements;
-    unsigned int x_size;
-    unsigned int y_size;
-
     unsigned int bitsize;
+    unsigned int elements_count = 1;
+    int shape_dims;
+    const ERL_NIF_TERM* shape_tuple_elements;
     char type[2];
 
-    if (!enif_get_uint(env, argv[0], &elements) ||
-          !enif_get_uint(env, argv[1], &x_size) ||
-          !enif_get_uint(env, argv[2], &y_size) ||
-          !enif_get_atom(env, argv[3], type, sizeof(type), ERL_NIF_LATIN1) ||
-          !enif_get_uint(env, argv[4], &bitsize)) {
+    if (!enif_get_atom(env, argv[0], type, sizeof(type), ERL_NIF_LATIN1) ||
+        !enif_get_uint(env, argv[1], &bitsize) ||
+        !enif_get_tuple(env, argv[2], &shape_dims, &shape_tuple_elements)) {
         return enif_make_badarg(env);
     }
 
-    const unsigned long size = elements * bitsize / 8;
+    unsigned int *shape = (unsigned int*)malloc(shape_dims * sizeof(unsigned int));
+    if (!shape) {
+        return enif_raise_exception(env, enif_make_string(env, "Memory allocation failed", ERL_NIF_LATIN1));
+    }
+
+    unsigned int x_size;
+    unsigned int y_size;
+    // Read the shape dimensions
+    for (int i = 0; i < shape_dims; i++) {
+        unsigned int uint_value;
+        if (!enif_get_uint(env, shape_tuple_elements[i], &uint_value)) {
+            free(shape);
+            return enif_make_badarg(env);
+        }
+
+        shape[i] = uint_value;
+        elements_count *= uint_value;
+
+        // Set size_x and size_y as last two dimension sizes
+        x_size = y_size;
+        y_size = uint_value;
+    }
+
+
+    const unsigned long size = elements_count * bitsize / 8;
 
     void *data = malloc(size);
 
     unsigned long cursor;
-    for(unsigned int i = 0; i < elements / (x_size * y_size); i++) {
+    for(unsigned int i = 0; i < elements_count / (x_size * y_size); i++) {
       for(unsigned int x = 0; x < x_size; x++) {
         for(unsigned int y = 0; y < y_size; y++) {
           cursor = i * x_size * y_size + x * y_size + y;
@@ -248,8 +298,11 @@ static ERL_NIF_TERM eye(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
 
     if (buffer)
     {
-        MTLBufferResource *buffer_res = enif_alloc_resource(buffer_resource_type, sizeof(MTLBufferResource));
+        MTLTensorResource *buffer_res = enif_alloc_resource(buffer_resource_type, sizeof(MTLTensorResource));
         buffer_res->buffer_ref = [[MTLBufferReference alloc] initWithBuffer:buffer];
+        buffer_res->bitsize = bitsize;
+        buffer_res->shape = shape;
+        buffer_res->elements_count = elements_count;
 
         ERL_NIF_TERM buffer_resource_term = enif_make_resource(env, buffer_res);
         enif_release_resource(buffer_res); // Release the resource, the term now holds the reference
@@ -262,14 +315,81 @@ static ERL_NIF_TERM eye(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     }
 }
 
+static ERL_NIF_TERM add_tensors(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+    MTLTensorResource *buffer_a;
+    MTLTensorResource *buffer_b;
+
+    if (!enif_get_resource(env, argv[0], buffer_resource_type, (void **)&buffer_a) ||
+        !enif_get_resource(env, argv[1], buffer_resource_type, (void **)&buffer_b)) {
+        return enif_make_badarg(env);
+    }
+    
+    id<MTLFunction> add_tensors_function = [mtl_library newFunctionWithName:@"add_tensors"];
+    if (add_tensors_function == nil) {
+        NSLog(@"Failed to find the adder function.");
+        return atom_error;
+    }
+
+    // Create a result buffer
+    id<MTLBuffer> result_buffer = [mtl_device newBufferWithLength:buffer_a->buffer_ref.buffer.length options:MTLResourceStorageModeShared];
+
+     // Create a compute pipeline state
+    NSError *error = nil;
+    id<MTLComputePipelineState> pipeline = [mtl_device newComputePipelineStateWithFunction:add_tensors_function error:&error];
+
+    if (!pipeline) {
+        NSLog(@"Error creating compute pipeline state: %@", error.localizedDescription);
+        return atom_error;
+    }
+// Create a command queue
+    id<MTLCommandQueue> commandQueue = [mtl_device newCommandQueue];
+
+    // Create a command buffer
+    id<MTLCommandBuffer> commandBuffer = [commandQueue commandBuffer];
+
+    // Create a compute command encoder
+    id<MTLComputeCommandEncoder> computeEncoder = [commandBuffer computeCommandEncoder];
+
+    // Set the pipeline state and buffers
+    [computeEncoder setComputePipelineState:pipeline];
+    [computeEncoder setBuffer:buffer_a->buffer_ref.buffer offset:0 atIndex:0];
+    [computeEncoder setBuffer:buffer_b->buffer_ref.buffer offset:0 atIndex:1];
+    [computeEncoder setBuffer:result_buffer offset:0 atIndex:2];
+
+    // Calculate the number of threads and threadgroups
+    MTLSize threadsPerGroup = MTLSizeMake(16, 1, 1);
+    MTLSize numThreadgroups = MTLSizeMake((buffer_a->elements_count + 15) / 16, 1, 1);
+
+    // Dispatch the threads
+    [computeEncoder dispatchThreadgroups:numThreadgroups threadsPerThreadgroup:threadsPerGroup];
+
+    // End encoding and commit the command buffer
+    [computeEncoder endEncoding];
+    [commandBuffer commit];
+    [commandBuffer waitUntilCompleted];
+
+    // Wrap the result buffer in a resource and return it
+    MTLTensorResource *buffer_res = enif_alloc_resource(buffer_resource_type, sizeof(MTLTensorResource));
+    buffer_res->buffer_ref = [[MTLBufferReference alloc] initWithBuffer:result_buffer];
+    buffer_res->bitsize = buffer_a->bitsize;
+    buffer_res->shape = buffer_a->shape;
+    buffer_res->elements_count = buffer_a->elements_count;
+
+    ERL_NIF_TERM buffer_resource_term = enif_make_resource(env, buffer_res);
+    enif_release_resource(buffer_res); // Release the resource, the term now holds the reference
+
+    return enif_make_tuple2(env, atom_ok, buffer_resource_term);
+}
+
 static ErlNifFunc nif_funcs[] = {
     {"metal_device_name", 0, metal_device_name, 0},
     {"init_metal_device", 0, init_metal_device, 0},
     {"create_tensor", 2, create_tensor, 0},
     {"tensor_to_list", 1, tensor_to_list, 0},
-    {"from_binary", 1, from_binary, 0},
+    {"from_binary", 3, from_binary, 0},
     {"to_binary", 2, to_binary, 0},
-    {"eye", 5, eye, 0}
+    {"eye", 3, eye, 0},
+    {"add_tensors", 2, add_tensors, 0}
 };
 
 id<MTLLibrary> load_metal_library_from_file(id<MTLDevice> device, const char* file_path) {
@@ -302,7 +422,7 @@ id<MTLLibrary> load_metal_library_from_file(id<MTLDevice> device, const char* fi
 static int on_load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info) {
     const char* mod = "Elixir.NxMetal.NIF";
     device_resource_type = enif_open_resource_type(env, mod, "Device", NULL, ERL_NIF_RT_CREATE, NULL);
-    buffer_resource_type = enif_open_resource_type(env, mod, "MTLBufferResource", buffer_resource_dtor, ERL_NIF_RT_CREATE, NULL);
+    buffer_resource_type = enif_open_resource_type(env, mod, "MTLTensorResource", buffer_resource_dtor, ERL_NIF_RT_CREATE, NULL);
 
     if (device_resource_type == NULL) {
         return -1;
@@ -323,13 +443,6 @@ static int on_load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info) {
         return -1;
     }
 
-    // id<MTLFunction> addFunction = [defaultLibrary newFunctionWithName:@"add_arrays"];
-    // if (addFunction == nil)
-    // {
-      // NSLog(@"Failed to find the adder function.");
-      // return nil;
-    // }
-
     atom_ok = enif_make_atom(env, "ok");
     atom_error = enif_make_atom(env, "error");
 
@@ -338,7 +451,7 @@ static int on_load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info) {
 
 static void buffer_resource_dtor(ErlNifEnv *env, void *obj)
 {
-    MTLBufferResource *buffer_res = (MTLBufferResource *)obj;
+    MTLTensorResource *buffer_res = (MTLTensorResource *)obj;
     buffer_res->buffer_ref = nil;
 }
 

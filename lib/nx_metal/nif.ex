@@ -31,7 +31,7 @@ defmodule NxMetal.NIF do
     :erlang.nif_error(:nif_not_loaded)
   end
 
-  def from_binary(_) do
+  def from_binary(_binary, _bitsize, _shape) do
     :erlang.nif_error(:nif_not_loaded)
   end
 
@@ -39,7 +39,11 @@ defmodule NxMetal.NIF do
     :erlang.nif_error(:nif_not_loaded)
   end
 
-  def eye(_, _, _, _, _) do
+  def eye(_, _, _) do
+    :erlang.nif_error(:nif_not_loaded)
+  end
+
+  def add_tensors(_, _) do
     :erlang.nif_error(:nif_not_loaded)
   end
 end
