@@ -38,9 +38,9 @@ defmodule NxMetal.Backend do
   end
 
   @impl true
-  def add(%T{data: %B{ref: a_ref}} = a, %T{data: %B{ref: b_ref}}, _backend_options) do
-    {:ok, ref} = NIF.add_tensors(a_ref, b_ref)
-    to_nx(ref, a)
+  def add(out, %T{data: %B{ref: a_ref}}, %T{data: %B{ref: b_ref}}) do
+    {:ok, ref} = NIF.add(a_ref, b_ref)
+    to_nx(ref, out)
   end
 
   @impl true
@@ -55,8 +55,10 @@ defmodule NxMetal.Backend do
 
   if Application.compile_env(:torchx, :add_backend_on_inspect, true) do
     defp maybe_add_signature(result, %T{data: %B{ref: ref}}) do
+      ~c"#Ref<" ++ rest = :erlang.ref_to_list(ref)
+
       Inspect.Algebra.concat([
-        "NxMetal.Backend(#{NIF.metal_device_name()}, #{inspect(ref)})",
+        "NxMetal.Backend<device:#{NIF.metal_device_name()}, #{List.to_string(rest)}",
         Inspect.Algebra.line(),
         result
       ])

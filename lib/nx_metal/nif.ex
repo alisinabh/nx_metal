@@ -43,7 +43,7 @@ defmodule NxMetal.NIF do
     :erlang.nif_error(:nif_not_loaded)
   end
 
-  def add_tensors(_, _) do
+  def add(_, _) do
     :erlang.nif_error(:nif_not_loaded)
   end
 end
