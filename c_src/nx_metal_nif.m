@@ -179,7 +179,7 @@ static ERL_NIF_TERM add(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
         return enif_make_badarg(env);
     }
     
-    id<MTLFunction> add_function = [mtl_library newFunctionWithName:@"add"];
+    id<MTLFunction> add_function = [mtl_library newFunctionWithName:@"add_float"];
     if (add_function == nil) {
         NSLog(@"Failed to find the adder function.");
         return atom_error;

@@ -9,28 +9,23 @@ defmodule NxMetal.Backend do
   @behaviour Nx.Backend
 
   @impl true
-  def init(_opts) do
-    {:ok, device, name} = NIF.init_metal_device()
-    %{device: %{ref: device, name: name}} |> IO.inspect()
+  def init(opts) do
+    opts
   end
 
   @impl true
-  def iota(tensor, axis, opts) do
-    IO.inspect(tensor)
-    IO.inspect(axis)
-    IO.inspect(opts)
-  end
-
-  def from_binary(%T{type: {_, bsize}, shape: shape} = tensor, binary, _opts) do
+  def from_binary(%T{type: {_, bsize}, shape: shape} = out, binary, _opts) do
     {:ok, ref} = NIF.from_binary(binary, bsize, shape)
-    to_nx(ref, tensor)
+    to_nx(ref, out)
   end
 
-  def to_binary(%T{data: %B{ref: ref}, type: {_, bits}}, limit) do
-    {:ok, bin} = NIF.to_binary(ref, div(limit * bits, 8))
+  @impl true
+  def to_binary(%T{type: {_, bits}} = t, limit) do
+    {:ok, bin} = NIF.to_binary(from_nx(t), div(limit * bits, 8))
     bin
   end
 
+  @impl true
   def eye(%T{shape: shape, type: {type, bsize}} = out, _backend_options) do
     {:ok, ref} = NIF.eye(type, bsize, shape)
 
@@ -38,8 +33,8 @@ defmodule NxMetal.Backend do
   end
 
   @impl true
-  def add(out, %T{data: %B{ref: a_ref}}, %T{data: %B{ref: b_ref}}) do
-    {:ok, ref} = NIF.add(a_ref, b_ref)
+  def add(out, a, b) do
+    {:ok, ref} = NIF.add(from_nx(a), from_nx(b))
     to_nx(ref, out)
   end
 
@@ -51,6 +46,24 @@ defmodule NxMetal.Backend do
     |> to_binary(min(limit, Nx.size(tensor)))
     |> then(&Nx.Backend.inspect(tensor, &1, inspect_opts))
     |> maybe_add_signature(tensor)
+  end
+
+  @doc false
+  def from_nx(%T{data: %B{ref: device_ref}}), do: device_ref
+  def from_nx(%T{} = tensor), do: Nx.backend_transfer(tensor, B) |> from_nx()
+
+  ## All remaining callbacks
+
+  funs = Nx.Backend.behaviour_info(:callbacks) -- Module.definitions_in(__MODULE__, :def)
+
+  for {fun, arity} <- funs do
+    args = Macro.generate_arguments(arity, __MODULE__)
+
+    @impl true
+    def unquote(fun)(unquote_splicing(args)) do
+      IO.puts("#{__MODULE__} unsupported operation #{unquote(fun)}")
+      apply(Nx.BinaryBackend, unquote(fun), [unquote_splicing(args)])
+    end
   end
 
   if Application.compile_env(:torchx, :add_backend_on_inspect, true) do
