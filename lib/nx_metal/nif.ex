@@ -31,7 +31,7 @@ defmodule NxMetal.NIF do
     :erlang.nif_error(:nif_not_loaded)
   end
 
-  def from_binary(_binary, _bitsize, _shape) do
+  def from_binary(_binary, _type, _bitsize, _shape) do
     :erlang.nif_error(:nif_not_loaded)
   end
 

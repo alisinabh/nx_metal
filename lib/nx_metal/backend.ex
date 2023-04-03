@@ -1,6 +1,8 @@
 defmodule NxMetal.Backend do
   defstruct [:ref]
 
+  require Logger
+
   alias Nx.Tensor, as: T
 
   alias NxMetal.NIF
@@ -14,8 +16,8 @@ defmodule NxMetal.Backend do
   end
 
   @impl true
-  def from_binary(%T{type: {_, bsize}, shape: shape} = out, binary, _opts) do
-    {:ok, ref} = NIF.from_binary(binary, bsize, shape)
+  def from_binary(%T{type: {type, bsize}, shape: shape} = out, binary, _opts) do
+    {:ok, ref} = NIF.from_binary(binary, type, bsize, shape)
     to_nx(ref, out)
   end
 
@@ -61,7 +63,7 @@ defmodule NxMetal.Backend do
 
     @impl true
     def unquote(fun)(unquote_splicing(args)) do
-      IO.puts("#{__MODULE__} unsupported operation #{unquote(fun)}")
+      Logger.warn("#{__MODULE__} unsupported operation #{unquote(fun)}")
       apply(Nx.BinaryBackend, unquote(fun), [unquote_splicing(args)])
     end
   end

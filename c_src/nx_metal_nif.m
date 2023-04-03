@@ -11,14 +11,16 @@ static ERL_NIF_TERM from_binary(ErlNifEnv* env, int argc, const ERL_NIF_TERM arg
     unsigned int elements_count = 1;
     int shape_dims;
     const ERL_NIF_TERM* shape_tuple_elements;
+    char type[2];
 
     if (!enif_inspect_binary(env, argv[0], &binary) ||
-        !enif_get_uint(env, argv[1], &bitsize) ||
-        !enif_get_tuple(env, argv[2], &shape_dims, &shape_tuple_elements)) {
+        !enif_get_atom(env, argv[1], type, sizeof(type), ERL_NIF_LATIN1) ||
+        !enif_get_uint(env, argv[2], &bitsize) ||
+        !enif_get_tuple(env, argv[3], &shape_dims, &shape_tuple_elements)) {
         return enif_make_badarg(env);
     }
 
-    unsigned int *shape = (unsigned int*)malloc(shape_dims * sizeof(unsigned int));
+    unsigned int *shape = (unsigned int*)enif_alloc(shape_dims * sizeof(unsigned int));
     if (!shape) {
         return enif_raise_exception(env, enif_make_string(env, "Memory allocation failed", ERL_NIF_LATIN1));
     }
@@ -44,8 +46,7 @@ static ERL_NIF_TERM from_binary(ErlNifEnv* env, int argc, const ERL_NIF_TERM arg
 
     // Create a resource reference and return it
     if (buffer) {
-
-        ERL_NIF_TERM tensor = to_resource(env, buffer, bitsize, shape, elements_count);
+        ERL_NIF_TERM tensor = to_resource(env, buffer, type[0], bitsize, shape, elements_count);
         return enif_make_tuple2(env, atom_ok, tensor);
     } else {
         return atom_error;
@@ -89,7 +90,7 @@ static ERL_NIF_TERM eye(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
         return enif_make_badarg(env);
     }
 
-    unsigned int *shape = (unsigned int*)malloc(shape_dims * sizeof(unsigned int));
+    unsigned int *shape = (unsigned int*)enif_alloc(shape_dims * sizeof(unsigned int));
     if (!shape) {
         return enif_raise_exception(env, enif_make_string(env, "Memory allocation failed", ERL_NIF_LATIN1));
     }
@@ -112,10 +113,9 @@ static ERL_NIF_TERM eye(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
         y_size = uint_value;
     }
 
-
     const unsigned long size = elements_count * bitsize / 8;
 
-    void *data = malloc(size);
+    void *data = enif_alloc(size);
 
     unsigned long cursor;
     for(unsigned int i = 0; i < elements_count / (x_size * y_size); i++) {
@@ -163,7 +163,7 @@ static ERL_NIF_TERM eye(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     free(data);
 
     if (buffer) {
-        ERL_NIF_TERM tensor = to_resource(env, buffer, bitsize, shape, elements_count);
+        ERL_NIF_TERM tensor = to_resource(env, buffer, type[0], bitsize, shape, elements_count);
         return enif_make_tuple2(env, atom_ok, tensor);
     } else {
         return atom_error;
@@ -178,10 +178,12 @@ static ERL_NIF_TERM add(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
         !enif_get_resource(env, argv[1], buffer_resource_type, (void **)&buffer_b)) {
         return enif_make_badarg(env);
     }
+
+    NSString *funName = [NSString stringWithFormat:@"add_%s", metal_type(buffer_a->type, buffer_a->bitsize)];
     
-    id<MTLFunction> add_function = [mtl_library newFunctionWithName:@"add_float"];
+    id<MTLFunction> add_function = [mtl_library newFunctionWithName:funName];
     if (add_function == nil) {
-        NSLog(@"Failed to find the adder function.");
+        NSLog(@"Failed to find the adder function. %@", funName);
         return atom_error;
     }
 
@@ -212,8 +214,8 @@ static ERL_NIF_TERM add(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     [computeEncoder setBuffer:result_buffer offset:0 atIndex:2];
 
     // Calculate the number of threads and threadgroups
-    MTLSize threadsPerGroup = MTLSizeMake(16, 1, 1);
-    MTLSize numThreadgroups = MTLSizeMake((buffer_a->elements_count + 15) / 16, 1, 1);
+    MTLSize threadsPerGroup = MTLSizeMake(32, 1, 1);
+    MTLSize numThreadgroups = MTLSizeMake((buffer_a->elements_count + 31) / 32, 1, 1);
 
     // Dispatch the threads
     [computeEncoder dispatchThreadgroups:numThreadgroups threadsPerThreadgroup:threadsPerGroup];
@@ -224,13 +226,13 @@ static ERL_NIF_TERM add(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     [commandBuffer waitUntilCompleted];
 
     // Wrap the result buffer in a resource and return it
-    ERL_NIF_TERM tensor = to_resource(env, result_buffer, buffer_a->bitsize, buffer_a->shape, buffer_a->elements_count);
+    ERL_NIF_TERM tensor = to_resource(env, result_buffer, buffer_a->type, buffer_a->bitsize, buffer_a->shape, buffer_a->elements_count);
     return enif_make_tuple2(env, atom_ok, tensor);
 }
 
 static ErlNifFunc nif_funcs[] = {
     {"metal_device_name", 0, metal_device_name, 0},
-    {"from_binary", 3, from_binary, 0},
+    {"from_binary", 4, from_binary, 0},
     {"to_binary", 2, to_binary, 0},
     {"eye", 3, eye, 0},
     {"add", 2, add, 0}

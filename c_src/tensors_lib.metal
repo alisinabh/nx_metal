@@ -1,6 +1,18 @@
 #include <metal_stdlib>
 using namespace metal;
 
+#define KERNEL_FUNC_ALL_TYPES(FUNC_NAME) \
+FUNC_NAME(half) \
+FUNC_NAME(float) \
+FUNC_NAME(char) \
+FUNC_NAME(short) \
+FUNC_NAME(int) \
+FUNC_NAME(long) \
+FUNC_NAME(uchar) \
+FUNC_NAME(ushort) \
+FUNC_NAME(uint) \
+FUNC_NAME(ulong)
+
 #define _KERNEL_FUNC_NAME(FUNC_NAME, TYPE) FUNC_NAME ## TYPE
 
 #define ADD_KERNEL_FUNC(TYPE) \
@@ -11,9 +23,8 @@ kernel void _KERNEL_FUNC_NAME(add_, TYPE)(constant TYPE *a [[buffer(0)]], \
   result[tid] = a[tid] + b[tid]; \
 }
 
-ADD_KERNEL_FUNC(float)
-ADD_KERNEL_FUNC(int)
-ADD_KERNEL_FUNC(uint)
+KERNEL_FUNC_ALL_TYPES(ADD_KERNEL_FUNC)
 
 #undef ADD_KERNEL_FUNC
 #undef _KERNEL_FUNC_NAME
+#undef KERNEL_FUNC_ALL_TYPES
