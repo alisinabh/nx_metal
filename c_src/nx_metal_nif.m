@@ -66,6 +66,11 @@ static ERL_NIF_TERM to_binary(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[
 
     id<MTLBuffer> buffer = buffer_res->buffer;
     NSUInteger buffer_length = [buffer length];
+
+    if (limit == 0) {
+        limit = buffer_length;
+    }
+
     NSUInteger num_bytes_to_copy = MIN(limit, buffer_length);
 
     void *buffer_contents = [buffer contents];

@@ -16,10 +16,13 @@ defmodule NxMetal.Backend do
   end
 
   @impl true
-  def from_binary(%T{type: {type, bsize}, shape: shape} = out, binary, _opts) do
+  def from_binary(%T{type: {type, bsize}, shape: shape} = out, binary, _opts \\ []) do
     {:ok, ref} = NIF.from_binary(binary, type, bsize, shape)
     to_nx(ref, out)
   end
+
+  @impl true
+  def reshape(out, tensor), do: from_binary(out, to_binary(tensor, 0))
 
   @impl true
   def to_binary(%T{type: {_, bits}} = t, limit) do
