@@ -136,9 +136,6 @@ static ERL_NIF_TERM eye(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
                 case 32:
                   ((float *) data)[cursor] = x == y ? 1.0 : 0.0;
                   break;
-                case 64:
-                  ((double *) data)[cursor] = x == y ? 1.0 : 0.0;
-                  break;
                 default:
                   return enif_make_badarg(env);
               }
@@ -203,9 +200,6 @@ static ERL_NIF_TERM as_type(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
                   break;
             case 32:
                   AS_TYPE_LOOP(float);
-                  break;
-            case 64:
-                  AS_TYPE_LOOP(double);
                   break;
             default:
                   return enif_make_badarg(env);

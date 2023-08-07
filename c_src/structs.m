@@ -33,8 +33,6 @@ TYPE elem_as_ ## TYPE(MTLTensorResource* resource, unsigned long index) { \
                return (TYPE)(((__fp16 *)contents)[index]); \
            case 32: \
                return (TYPE)(((float *)contents)[index]); \
-           case 64: \
-               return (TYPE)(((double *)contents)[index]); \
        } \
     } else { \
         switch (resource->bitsize) { \
@@ -53,7 +51,6 @@ TYPE elem_as_ ## TYPE(MTLTensorResource* resource, unsigned long index) { \
 
 ELEM_AS(__fp16);
 ELEM_AS(float);
-ELEM_AS(double);
 
 ELEM_AS(char);
 ELEM_AS(short);

@@ -17,7 +17,6 @@ ERL_NIF_TERM wrap(ErlNifEnv* env, MTLTensorResource* resource);
 // Floating point precision helpers
 __fp16 elem_as___fp16(MTLTensorResource* resource, unsigned long index);
 float elem_as_float(MTLTensorResource* resource, unsigned long index);
-double elem_as_double(MTLTensorResource* resource, unsigned long index);
 
 // Integer precision helpers
 char elem_as_char(MTLTensorResource* resource, unsigned long index);
