@@ -175,72 +175,129 @@ static ERL_NIF_TERM eye(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     }
 }
 
-static ERL_NIF_TERM add(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
-    MTLTensorResource *buffer_a;
-    MTLTensorResource *buffer_b;
+#define AS_TYPE_LOOP(TYPE) \
+    for(unsigned int i = 0; i < tensor->elements_count; i++) { \
+        ((TYPE *) dstData)[i] = elem_as_ ## TYPE(tensor, i); \
+    }
 
-    if (!enif_get_resource(env, argv[0], buffer_resource_type, (void **)&buffer_a) ||
-        !enif_get_resource(env, argv[1], buffer_resource_type, (void **)&buffer_b)) {
+static ERL_NIF_TERM as_type(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+    MTLTensorResource *tensor;
+    unsigned int bitsize;
+    char type[2];
+
+    if (!enif_get_resource(env, argv[0], buffer_resource_type, (void **)&tensor) || 
+        !enif_get_atom(env, argv[1], type, sizeof(type), ERL_NIF_LATIN1) ||
+        !enif_get_uint(env, argv[2], &bitsize)) {
         return enif_make_badarg(env);
     }
 
-    NSString *funName = [NSString stringWithFormat:@"add_%s", metal_type(buffer_a->type, buffer_a->bitsize)];
+    const unsigned long size = tensor->elements_count * bitsize / 8;
+    id<MTLBuffer> destinationBuffer = [mtl_device newBufferWithLength:size options:MTLResourceStorageModeShared];
+
+    void *dstData = [destinationBuffer contents];
     
-    id<MTLFunction> add_function = [mtl_library newFunctionWithName:funName];
-    if (add_function == nil) {
-        NSLog(@"Failed to find the adder function. %@", funName);
-        return atom_error;
+    if (strcmp("f", type) == 0) {
+        switch(bitsize) {
+            case 16:
+                  AS_TYPE_LOOP(__fp16);
+                  break;
+            case 32:
+                  AS_TYPE_LOOP(float);
+                  break;
+            case 64:
+                  AS_TYPE_LOOP(double);
+                  break;
+            default:
+                  return enif_make_badarg(env);
+        }
+
+    } else {
+        switch(bitsize) {
+            case 8:
+                  AS_TYPE_LOOP(char);
+                  break;
+            case 16:
+                  AS_TYPE_LOOP(short);
+                  break;
+            case 32:
+                  AS_TYPE_LOOP(int);
+                  break;
+            case 64:
+                  AS_TYPE_LOOP(long);
+                  break;
+            default:
+                  return enif_make_badarg(env);
+        }
     }
 
-    // Create a result buffer
-    id<MTLBuffer> result_buffer = [mtl_device newBufferWithLength:buffer_b->buffer.length options:MTLResourceStorageModeShared];
-
-     // Create a compute pipeline state
-    NSError *error = nil;
-    id<MTLComputePipelineState> pipeline = [mtl_device newComputePipelineStateWithFunction:add_function error:&error];
-
-    if (!pipeline) {
-        NSLog(@"Error creating compute pipeline state: %@", error.localizedDescription);
-        return atom_error;
-    }
-// Create a command queue
-    id<MTLCommandQueue> commandQueue = [mtl_device newCommandQueue];
-
-    // Create a command buffer
-    id<MTLCommandBuffer> commandBuffer = [commandQueue commandBuffer];
-
-    // Create a compute command encoder
-    id<MTLComputeCommandEncoder> computeEncoder = [commandBuffer computeCommandEncoder];
-
-    // Set the pipeline state and buffers
-    [computeEncoder setComputePipelineState:pipeline];
-    [computeEncoder setBuffer:buffer_a->buffer offset:0 atIndex:0];
-    [computeEncoder setBuffer:buffer_b->buffer offset:0 atIndex:1];
-    [computeEncoder setBuffer:result_buffer offset:0 atIndex:2];
-
-    // Calculate the number of threads and threadgroups
-    MTLSize threadsPerGroup = MTLSizeMake(32, 1, 1);
-    MTLSize numThreadgroups = MTLSizeMake((buffer_a->elements_count + 31) / 32, 1, 1);
-
-    // Dispatch the threads
-    [computeEncoder dispatchThreadgroups:numThreadgroups threadsPerThreadgroup:threadsPerGroup];
-
-    // End encoding and commit the command buffer
-    [computeEncoder endEncoding];
-    [commandBuffer commit];
-    [commandBuffer waitUntilCompleted];
-
-    // Wrap the result buffer in a resource and return it
-    ERL_NIF_TERM tensor = to_resource(env, result_buffer, buffer_a->type, buffer_a->bitsize, buffer_a->shape, buffer_a->elements_count);
-    return enif_make_tuple2(env, atom_ok, tensor);
+    ERL_NIF_TERM outTensor = to_resource(env, destinationBuffer, type[0], bitsize, tensor->shape, tensor->elements_count);
+    return enif_make_tuple2(env, atom_ok, outTensor);
 }
+
+#define BIN_OP(OP_NAME) \
+static ERL_NIF_TERM OP_NAME(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) { \
+    MTLTensorResource *buffer_a; \
+    MTLTensorResource *buffer_b; \
+    if (!enif_get_resource(env, argv[0], buffer_resource_type, (void **)&buffer_a) || \
+        !enif_get_resource(env, argv[1], buffer_resource_type, (void **)&buffer_b)) { \
+        return enif_make_badarg(env); \
+    } \
+    /* Get metal shader function */ \
+    NSString *funName = [NSString stringWithFormat:@#OP_NAME"_%s", metal_type(buffer_a->type, buffer_a->bitsize)]; \
+    id<MTLFunction> mtl_function = [mtl_library newFunctionWithName:funName]; \
+    if (mtl_function == nil) { \
+        NSLog(@"Failed to find the function %@", funName); \
+        return atom_error; \
+    } \
+    /* Create a result buffer */ \
+    id<MTLBuffer> result_buffer = [mtl_device newBufferWithLength:buffer_b->buffer.length options:MTLResourceStorageModeShared]; \
+    NSError *error = nil; \
+    /* Create a compute pipeline state */ \
+    id<MTLComputePipelineState> pipeline = [mtl_device newComputePipelineStateWithFunction:mtl_function error:&error]; \
+    if (!pipeline) { \
+        NSLog(@"Error creating compute pipeline state: %@", error.localizedDescription); \
+        return atom_error; \
+    } \
+    /* Create a command queue, buffer and compute encoder */ \
+    id<MTLCommandQueue> commandQueue = [mtl_device newCommandQueue]; \
+    id<MTLCommandBuffer> commandBuffer = [commandQueue commandBuffer]; \
+    id<MTLComputeCommandEncoder> computeEncoder = [commandBuffer computeCommandEncoder]; \
+    /* Set the pipeline state and buffers */ \
+    [computeEncoder setComputePipelineState:pipeline]; \
+    [computeEncoder setBuffer:buffer_a->buffer offset:0 atIndex:0]; \
+    [computeEncoder setBuffer:buffer_b->buffer offset:0 atIndex:1]; \
+    [computeEncoder setBuffer:result_buffer offset:0 atIndex:2]; \
+    /* Calculate the number of threads and threadgroups */ \
+    MTLSize threadsPerGroup = MTLSizeMake(32, 1, 1); \
+    MTLSize numThreadgroups = MTLSizeMake((buffer_a->elements_count + 31) / 32, 1, 1); \
+    /* Dispatch the threads */ \
+    [computeEncoder dispatchThreadgroups:numThreadgroups threadsPerThreadgroup:threadsPerGroup]; \
+    /* End encoding and commit the command buffer */ \
+    [computeEncoder endEncoding]; \
+    [commandBuffer commit]; \
+    [commandBuffer waitUntilCompleted]; \
+    /* Wrap the result buffer in a resource and return it */ \
+    ERL_NIF_TERM tensor = to_resource(env, result_buffer, buffer_a->type, buffer_a->bitsize, buffer_a->shape, buffer_a->elements_count); \
+    return enif_make_tuple2(env, atom_ok, tensor); \
+}
+
+BIN_OP(add);
+BIN_OP(subtract);
+BIN_OP(multiply);
+BIN_OP(divide);
+
+#define BIN_OP_DEF(OP_NAME) {#OP_NAME"", 2, OP_NAME, 0}
 
 static ErlNifFunc nif_funcs[] = {
     {"metal_device_name", 0, metal_device_name, 0},
     {"from_binary", 4, from_binary, 0},
     {"to_binary", 2, to_binary, 0},
     {"eye", 3, eye, 0},
-    {"add", 2, add, 0}
+    {"as_type", 3, as_type, 0},
+    BIN_OP_DEF(add),
+    BIN_OP_DEF(subtract),
+    BIN_OP_DEF(multiply),
+    BIN_OP_DEF(divide),
 };
 
 id<MTLLibrary> load_metal_library_from_file(id<MTLDevice> device, const char* file_path) {

@@ -37,9 +37,23 @@ defmodule NxMetal.Backend do
     to_nx(ref, out)
   end
 
+  Enum.each(NIF.bin_ops(), fn op ->
+    @impl true
+    def unquote(op)(%T{type: type} = out, %T{type: type} = a, %T{type: type} = b) do
+      {:ok, ref} = NIF.unquote(op)(from_nx(a), from_nx(b))
+      to_nx(ref, out)
+    end
+
+    def unquote(op)(%T{type: type} = out, a, b) do
+      a = Nx.as_type(a, type)
+      b = Nx.as_type(b, type)
+      unquote(op)(out, a, b)
+    end
+  end)
+
   @impl true
-  def add(out, a, b) do
-    {:ok, ref} = NIF.add(from_nx(a), from_nx(b))
+  def as_type(%T{type: {type, bsize}} = out, tensor) do
+    {:ok, ref} = NIF.as_type(from_nx(tensor), type, bsize)
     to_nx(ref, out)
   end
 

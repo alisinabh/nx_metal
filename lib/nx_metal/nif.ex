@@ -1,6 +1,8 @@
 defmodule NxMetal.NIF do
   @on_load :load_nif
 
+  @bin_ops ~w[add subtract multiply divide]a
+
   def load_nif do
     path =
       :code.priv_dir(:nx_metal)
@@ -43,7 +45,14 @@ defmodule NxMetal.NIF do
     :erlang.nif_error(:nif_not_loaded)
   end
 
-  def add(_, _) do
+  def as_type(_, _, _) do
     :erlang.nif_error(:nif_not_loaded)
   end
+
+  Enum.each(@bin_ops, fn op ->
+    def unquote(op)(_, _), do: :erlang.nif_error(:nif_not_loaded)
+  end)
+
+  @doc false
+  def bin_ops, do: @bin_ops
 end
