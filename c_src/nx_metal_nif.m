@@ -229,7 +229,7 @@ static ERL_NIF_TERM as_type(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[])
 }
 
 #define BIN_OP(OP_NAME) \
-static ERL_NIF_TERM OP_NAME(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) { \
+static ERL_NIF_TERM nifop_ ## OP_NAME(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) { \
     MTLTensorResource *buffer_a; \
     MTLTensorResource *buffer_b; \
     if (!enif_get_resource(env, argv[0], buffer_resource_type, (void **)&buffer_a) || \
@@ -279,8 +279,9 @@ BIN_OP(add);
 BIN_OP(subtract);
 BIN_OP(multiply);
 BIN_OP(divide);
+BIN_OP(pow);
 
-#define BIN_OP_DEF(OP_NAME) {#OP_NAME"", 2, OP_NAME, 0}
+#define BIN_OP_DEF(OP_NAME) {#OP_NAME"", 2, nifop_ ## OP_NAME, 0}
 
 static ErlNifFunc nif_funcs[] = {
     {"metal_device_name", 0, metal_device_name, 0},
@@ -292,6 +293,7 @@ static ErlNifFunc nif_funcs[] = {
     BIN_OP_DEF(subtract),
     BIN_OP_DEF(multiply),
     BIN_OP_DEF(divide),
+    BIN_OP_DEF(pow),
 };
 
 id<MTLLibrary> load_metal_library_from_file(id<MTLDevice> device, const char* file_path) {

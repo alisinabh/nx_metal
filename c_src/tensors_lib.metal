@@ -55,6 +55,16 @@ kernel void _KERNEL_FUNC_NAME(divide_, TYPE)(constant TYPE *a [[buffer(0)]], \
 
 KERNEL_FUNC_ALL_TYPES(DIVIDE_KERNEL_FUNC)
 
+#define POW_KERNEL_FUNC(TYPE) \
+kernel void _KERNEL_FUNC_NAME(pow_, TYPE)(constant TYPE *a [[buffer(0)]], \
+                      constant TYPE *b [[buffer(1)]], \
+                      device TYPE *result [[buffer(2)]], \
+                      uint tid [[thread_position_in_grid]]) { \
+  result[tid] = pow(float(a[tid]), float(b[tid])); \
+}
+
+KERNEL_FUNC_ALL_TYPES(POW_KERNEL_FUNC)
+
 #undef ADD_KERNEL_FUNC
 #undef _KERNEL_FUNC_NAME
 #undef KERNEL_FUNC_ALL_TYPES
