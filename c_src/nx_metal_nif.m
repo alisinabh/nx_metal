@@ -123,43 +123,42 @@ static ERL_NIF_TERM eye(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     id<MTLBuffer> buffer = [mtl_device newBufferWithLength:size options:MTLResourceStorageModeShared];
     void *data = [buffer contents];
 
-    unsigned long cursor;
-    for(unsigned int i = 0; i < elements_count / (x_size * y_size); i++) {
-      for(unsigned int x = 0; x < x_size; x++) {
-        for(unsigned int y = 0; y < y_size; y++) {
-          cursor = i * x_size * y_size + x * y_size + y;
+    unsigned int box_size = x_size * y_size;
+    unsigned int box_begin;
 
-          if (strcmp("f", type) == 0) {
-              switch(bitsize) {
-                case 16:
-                  ((__fp16 *) data)[cursor] = x == y ? 1.0 : 0.0;
-                  break;
-                case 32:
-                  ((float *) data)[cursor] = x == y ? 1.0 : 0.0;
-                  break;
-                default:
-                  return enif_make_badarg(env);
-              }
-          } else {
-              switch(bitsize) {
-                case 8:
-                  ((char *) data)[cursor] = x == y ? 1 : 0;
-                  break;
-                case 16:
-                  ((short *) data)[cursor] = x == y ? 1 : 0;
-                  break;
-                case 32:
-                  ((int *) data)[cursor] = x == y ? 1 : 0;
-                  break;
-                case 64:
-                  ((long *) data)[cursor] = x == y ? 1 : 0;
-                  break;
-                default:
-                  return enif_make_badarg(env);
-              }
-          }
+    for (unsigned int box = 0; box < elements_count / box_size; box++) {
+        box_begin = box * box_size;
+        for (unsigned int i = box_begin; i < box_begin + (y_size * y_size); i+=y_size+1) {
+            if (strcmp("f", type) == 0) {
+                switch(bitsize) {
+                    case 16:
+                        ((__fp16 *) data)[i] = 1.0;
+                        break;
+                    case 32:
+                        ((float *) data)[i] = 1.0;
+                        break;
+                    default:
+                        return enif_make_badarg(env);
+                }
+            } else {
+                switch(bitsize) {
+                    case 8:
+                        ((char *) data)[i] = 1;
+                        break;
+                    case 16:
+                        ((short *) data)[i] = 1;
+                        break;
+                    case 32:
+                        ((int *) data)[i] = 1;
+                        break;
+                    case 64:
+                        ((long *) data)[i] = 1;
+                        break;
+                    default:
+                        return enif_make_badarg(env);
+                }
+            }
         }
-      }
     }
 
     ERL_NIF_TERM tensor = to_resource(env, buffer, type[0], bitsize, shape, elements_count);
