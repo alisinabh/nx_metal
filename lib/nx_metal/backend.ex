@@ -37,7 +37,7 @@ defmodule NxMetal.Backend do
     to_nx(ref, out)
   end
 
-  Enum.each(NIF.bin_ops(), fn op ->
+  Enum.each(NIF.bin_ops() -- [:pow], fn op ->
     @impl true
     def unquote(op)(%T{type: type} = out, %T{type: type} = a, %T{type: type} = b) do
       {:ok, ref} = NIF.unquote(op)(from_nx(a), from_nx(b))
@@ -52,6 +52,24 @@ defmodule NxMetal.Backend do
   end)
 
   @impl true
+  def pow(%T{type: {:f, _} = type} = out, %T{type: type} = a, %T{type: type} = b) do
+    {:ok, ref} = NIF.pow(from_nx(a), from_nx(b))
+    to_nx(ref, out)
+  end
+
+  def pow(%T{type: {_, bsize} = type} = out, a, b) do
+    bsize = max(min(32, bsize), 16)
+    [out, a, b] = Enum.map([out, a, b], &Nx.as_type(&1, {:f, bsize}))
+
+    pow(out, a, b)
+    # Uncomment when round functionality implemented
+    # |> Nx.round()
+    |> Nx.as_type(type)
+  end
+
+  @impl true
+  def as_type(%T{type: type}, %T{type: type} = tensor), do: tensor
+
   def as_type(%T{type: {type, bsize}} = out, tensor) do
     {:ok, ref} = NIF.as_type(from_nx(tensor), type, bsize)
     to_nx(ref, out)

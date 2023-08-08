@@ -120,7 +120,8 @@ static ERL_NIF_TERM eye(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
 
     const unsigned long size = elements_count * bitsize / 8;
 
-    void *data = enif_alloc(size);
+    id<MTLBuffer> buffer = [mtl_device newBufferWithLength:size options:MTLResourceStorageModeShared];
+    void *data = [buffer contents];
 
     unsigned long cursor;
     for(unsigned int i = 0; i < elements_count / (x_size * y_size); i++) {
@@ -161,15 +162,8 @@ static ERL_NIF_TERM eye(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
       }
     }
 
-    id<MTLBuffer> buffer = [mtl_device newBufferWithBytes:data length:size options:MTLResourceStorageModeShared];
-    free(data);
-
-    if (buffer) {
-        ERL_NIF_TERM tensor = to_resource(env, buffer, type[0], bitsize, shape, elements_count);
-        return enif_make_tuple2(env, atom_ok, tensor);
-    } else {
-        return atom_error;
-    }
+    ERL_NIF_TERM tensor = to_resource(env, buffer, type[0], bitsize, shape, elements_count);
+    return enif_make_tuple2(env, atom_ok, tensor);
 }
 
 #define AS_TYPE_LOOP(TYPE) \
@@ -280,6 +274,11 @@ BIN_OP(subtract);
 BIN_OP(multiply);
 BIN_OP(divide);
 BIN_OP(pow);
+BIN_OP(remainder);
+BIN_OP(atan2);
+BIN_OP(min);
+BIN_OP(max);
+BIN_OP(quotient);
 
 #define BIN_OP_DEF(OP_NAME) {#OP_NAME"", 2, nifop_ ## OP_NAME, 0}
 
@@ -294,6 +293,11 @@ static ErlNifFunc nif_funcs[] = {
     BIN_OP_DEF(multiply),
     BIN_OP_DEF(divide),
     BIN_OP_DEF(pow),
+    BIN_OP_DEF(remainder),
+    BIN_OP_DEF(atan2),
+    BIN_OP_DEF(min),
+    BIN_OP_DEF(max),
+    BIN_OP_DEF(quotient),
 };
 
 id<MTLLibrary> load_metal_library_from_file(id<MTLDevice> device, const char* file_path) {

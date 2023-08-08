@@ -1,7 +1,7 @@
 defmodule NxMetal.NIF do
   @on_load :load_nif
 
-  @bin_ops ~w[add subtract multiply divide pow]a
+  @bin_ops ~w[add subtract multiply divide pow remainder atan2 min max quotient]a
 
   def load_nif do
     path =

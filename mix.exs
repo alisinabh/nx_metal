@@ -6,6 +6,7 @@ defmodule NxMetal.MixProject do
       app: :nx_metal,
       version: "0.1.0",
       elixir: "~> 1.13",
+      elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       compilers: [:elixir_make] ++ Mix.compilers()
@@ -18,6 +19,9 @@ defmodule NxMetal.MixProject do
       extra_applications: [:logger, :nx]
     ]
   end
+
+  defp elixirc_paths(:test), do: ~w(lib test/support)
+  defp elixirc_paths(_), do: ~w(lib)
 
   # Run "mix help deps" to learn about dependencies.
   defp deps do
