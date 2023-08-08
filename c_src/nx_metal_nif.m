@@ -358,7 +358,8 @@ static int on_load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info) {
 
 void buffer_resource_dtor(ErlNifEnv *env, void *obj) {
     MTLTensorResource *buffer_res = (MTLTensorResource *)obj;
-    buffer_res->buffer = nil;
+    [buffer_res->buffer release];
+    enif_release_resource(buffer_res);
 }
 
 ERL_NIF_INIT(Elixir.NxMetal.NIF, nif_funcs, on_load, NULL, NULL, NULL)
