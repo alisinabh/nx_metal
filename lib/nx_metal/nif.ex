@@ -50,7 +50,7 @@ defmodule NxMetal.NIF do
   end
 
   Enum.each(@bin_ops, fn op ->
-    def unquote(op)(_, _), do: :erlang.nif_error(:nif_not_loaded)
+    def unquote(op)(_lhs, _rhs), do: :erlang.nif_error(:nif_not_loaded)
   end)
 
   @doc false

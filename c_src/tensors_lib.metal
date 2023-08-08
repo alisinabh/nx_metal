@@ -76,7 +76,21 @@ kernel void _KERNEL_FUNC_NAME(pow_, TYPE)(constant TYPE *a [[buffer(0)]], \
   result[tid] = pow((float)a[tid], (float)b[tid]); \
 }
 
-KERNEL_FUNC_ALL_TYPES(POW_KERNEL_FUNC)
+KERNEL_FUNC_INT_TYPES(POW_KERNEL_FUNC)
+
+kernel void pow_half(constant half *a [[buffer(0)]],
+                      constant half *b [[buffer(1)]],
+                      device half *result [[buffer(2)]],
+                      uint tid [[thread_position_in_grid]]) {
+  result[tid] = pow(a[tid], b[tid]);
+}
+
+kernel void pow_float(constant float *a [[buffer(0)]],
+                      constant float *b [[buffer(1)]],
+                      device float *result [[buffer(2)]],
+                      uint tid [[thread_position_in_grid]]) {
+  result[tid] = pow(a[tid], b[tid]);
+}
 
 // remainder
 #define REMAINDER_KERNEL_FUNC(TYPE) \

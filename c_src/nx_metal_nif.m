@@ -29,7 +29,7 @@ static ERL_NIF_TERM from_binary(ErlNifEnv* env, int argc, const ERL_NIF_TERM arg
     for (int i = 0; i < shape_dims; i++) {
         unsigned int uint_value;
         if (!enif_get_uint(env, shape_tuple_elements[i], &uint_value)) {
-            free(shape);
+            enif_free(shape);
             return enif_make_badarg(env);
         }
 
@@ -37,11 +37,9 @@ static ERL_NIF_TERM from_binary(ErlNifEnv* env, int argc, const ERL_NIF_TERM arg
         elements_count *= uint_value;
     }
 
-    unsigned int num_elements = binary.size * 8 / bitsize;
-
     // Create a Metal buffer
     id<MTLBuffer> buffer = [mtl_device newBufferWithBytes:binary.data
-                                                length:num_elements * bitsize / 8
+                                                length:binary.size
                                                options:MTLResourceStorageModeShared];
 
     // Create a resource reference and return it
@@ -75,7 +73,9 @@ static ERL_NIF_TERM to_binary(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[
 
     void *buffer_contents = [buffer contents];
     ErlNifBinary binary;
-    enif_alloc_binary(num_bytes_to_copy, &binary);
+    if(!enif_alloc_binary(num_bytes_to_copy, &binary)) {
+        return enif_raise_exception(env, enif_make_string(env, "Memory allocation failed", ERL_NIF_LATIN1));
+    }
     memcpy(binary.data, buffer_contents, num_bytes_to_copy);
 
     ERL_NIF_TERM binary_term = enif_make_binary(env, &binary);
@@ -106,7 +106,7 @@ static ERL_NIF_TERM eye(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     for (int i = 0; i < shape_dims; i++) {
         unsigned int uint_value;
         if (!enif_get_uint(env, shape_tuple_elements[i], &uint_value)) {
-            free(shape);
+            enif_free(shape);
             return enif_make_badarg(env);
         }
 
@@ -238,7 +238,8 @@ static ERL_NIF_TERM nifop_ ## OP_NAME(ErlNifEnv* env, int argc, const ERL_NIF_TE
         return atom_error; \
     } \
     /* Create a result buffer */ \
-    id<MTLBuffer> result_buffer = [mtl_device newBufferWithLength:buffer_b->buffer.length options:MTLResourceStorageModeShared]; \
+    unsigned int elements_count = MAX(buffer_b->elements_count, buffer_a->elements_count); \
+    id<MTLBuffer> result_buffer = [mtl_device newBufferWithLength:MAX(buffer_a->buffer.length, buffer_b->buffer.length) options:MTLResourceStorageModeShared]; \
     NSError *error = nil; \
     /* Create a compute pipeline state */ \
     id<MTLComputePipelineState> pipeline = [mtl_device newComputePipelineStateWithFunction:mtl_function error:&error]; \
@@ -256,16 +257,16 @@ static ERL_NIF_TERM nifop_ ## OP_NAME(ErlNifEnv* env, int argc, const ERL_NIF_TE
     [computeEncoder setBuffer:buffer_b->buffer offset:0 atIndex:1]; \
     [computeEncoder setBuffer:result_buffer offset:0 atIndex:2]; \
     /* Calculate the number of threads and threadgroups */ \
-    MTLSize threadsPerGroup = MTLSizeMake(32, 1, 1); \
-    MTLSize numThreadgroups = MTLSizeMake((buffer_a->elements_count + 31) / 32, 1, 1); \
+    MTLSize gridSize = MTLSizeMake(elements_count, 1, 1); \
+    MTLSize threadgroupSize = MTLSizeMake(MIN(pipeline.maxTotalThreadsPerThreadgroup, elements_count), 1, 1); \
     /* Dispatch the threads */ \
-    [computeEncoder dispatchThreadgroups:numThreadgroups threadsPerThreadgroup:threadsPerGroup]; \
+    [computeEncoder dispatchThreadgroups:gridSize threadsPerThreadgroup:threadgroupSize]; \
     /* End encoding and commit the command buffer */ \
     [computeEncoder endEncoding]; \
     [commandBuffer commit]; \
     [commandBuffer waitUntilCompleted]; \
     /* Wrap the result buffer in a resource and return it */ \
-    ERL_NIF_TERM tensor = to_resource(env, result_buffer, buffer_a->type, buffer_a->bitsize, buffer_a->shape, buffer_a->elements_count); \
+    ERL_NIF_TERM tensor = to_resource(env, result_buffer, buffer_a->type, buffer_a->bitsize, buffer_a->shape, elements_count); \
     return enif_make_tuple2(env, atom_ok, tensor); \
 }
 
@@ -323,6 +324,8 @@ id<MTLLibrary> load_metal_library_from_file(id<MTLDevice> device, const char* fi
     if (!library) {
         NSLog(@"Error creating Metal library: %@", error.localizedDescription);
     }
+
+    free(data);
 
     return library;
 }
